@@ -8,7 +8,11 @@ import numpy as np
 import pac
 #import pacpy #wasn't here before
 from scipy import io
+from scipy.signal import firwin2, firwin
+from scipy.signal import filtfilt
 
+
+"""
 def filtandremove(x,rejects, f_osc, Fs=512., w=3, boundary=0):
         # Filter in narrow band
     from pacpy.filt import firf #in filt.py#pacpy.filt
@@ -18,7 +22,7 @@ def filtandremove(x,rejects, f_osc, Fs=512., w=3, boundary=0):
     xn = np.delete(xn, rejects)
     
     return xn
-
+"""
 def findpt(x, rejects, f_osc, Fs=512., w=3, boundary=0):
     """
     Calculate peaks and troughs over time series
@@ -47,7 +51,7 @@ def findpt(x, rejects, f_osc, Fs=512., w=3, boundary=0):
         """
     # Filter in narrow band
     #from pacpy.filt import firf
-    from pac import firf
+    #from utils import firf
     xn = firf(x, f_osc, Fs, w=w, rmvedge=False)
 
     # Find zero crosses
@@ -471,3 +475,69 @@ def _PTrsharp(x, Ps, Ts, widthS, ampPC=0, Fs=1000, fosc=(13, 30),
     else:
         Es = Ts
     return _ampthresh(ampPC, x, fosc, Fs, Es, ptr)
+
+def firf(x, f_range, fs=512, w=4, rmvedge = True):
+    """
+    Filter signal with an FIR filter
+    *Like fir1 in MATLAB
+
+    x : array-like, 1d
+        Time series to filter
+    f_range : (low, high), Hz
+        Cutoff frequencies of bandpass filter
+    fs : float, Hz
+        Sampling rate
+    w : float
+        Length of the filter in terms of the number of cycles 
+        of the oscillation whose frequency is the low cutoff of the 
+        bandpass filter
+
+    Returns
+    -------
+    x_filt : array-like, 1d
+        Filtered time series
+    """
+
+    if w <= 0:
+        raise ValueError(
+            'Number of cycles in a filter must be a positive number.')
+
+    nyq = np.float(fs / 2)
+    if np.any(np.array(f_range) > nyq):
+        raise ValueError('Filter frequencies must be below nyquist rate.')
+
+    if np.any(np.array(f_range) < 0):
+        raise ValueError('Filter frequencies must be positive.')
+
+    Ntaps = np.floor(w * fs / f_range[0])
+    if len(x) < Ntaps:
+        raise RuntimeError(
+            'Length of filter is loger than data. '
+            'Provide more data or a shorter filter.')
+
+    # Perform filtering
+    tapsx = firwin(Ntaps, np.array(f_range) / nyq, pass_zero=False)#####
+    x_filt = filtfilt(tapsx, [1], x)
+
+    if any(np.isnan(x_filt)):
+        raise RuntimeError(
+            'Filtered signal contains nans. Adjust filter parameters.')
+
+    # Remove edge artifacts
+    if rmvedge:
+        return _remove_edge(x_filt, Ntaps)
+    else:
+        return x_filt
+    
+    
+def _remove_edge(x, N):
+    """
+    Calculate the number of points to remove for edge artifacts
+
+    x : array
+        time series to remove edge artifacts from
+    N : int
+        length of filter
+    """
+    N = int(N)
+    return x[N:-N]
